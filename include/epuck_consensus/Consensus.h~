@@ -1,0 +1,43 @@
+/*
+ * Consensus.h
+ *
+ *  Created on: 19 ago 2015
+ *      Author: filippo
+ */
+
+#ifndef EPUCK_CONSENSUS_SRC_CONSENSUS_H_
+#define EPUCK_CONSENSUS_SRC_CONSENSUS_H_
+#include "geometry_msgs/Twist.h"
+#include "ros/ros.h"
+#include <string>
+class Consensus {
+public:
+	Consensus();
+	virtual ~Consensus();
+private:
+	ros::NodeHandle nh_;
+	int b0;
+	Robo Robots[3]
+	int L_[3][3];
+	int b_[3];
+	int x_[3];
+	int y_[3];
+	int z_[3];
+	//int aspettaok();
+	int acquisisciPos();
+	//int calcola();
+};
+class Robo	{
+public:
+	Robo(int numero);
+	virtual ~Robo();
+	
+	double x;
+	double y;
+	double z;
+private:
+	int num;
+	ros::Publisher pub_;
+	int invia(float v,float W);
+};
+#endif /* EPUCK_CONSENSUS_SRC_CONSENSUS_H_ */

@@ -1,0 +1,26 @@
+/*
+ * Consensus.cpp
+ *
+ *  Created on: 19 ago 2015
+ *      Author: filippo
+ */
+
+#include "epuck_consensus/Consensus.h"
+#include "geometry_msgs/Twist.h"
+
+Consensus::Consensus() {
+	aspettaok();
+	
+
+}
+
+Consensus::~Consensus() {
+	
+}
+
+Robo::Robo(int numero) {
+	
+	num=numero;
+	
+
+}
