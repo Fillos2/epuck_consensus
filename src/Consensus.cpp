@@ -6,6 +6,7 @@
  */
 
 #include "epuck_consensus/Consensus.h"
+#include "geometry_msgs/TwistStamped.h"
 #include "geometry_msgs/Twist.h"
 #include "epuck_consensus/Robopuck.h"
 #include "ros/ros.h"
@@ -18,6 +19,7 @@ using namespace std;
 Consensus::Consensus():it(nh_) {
 	inizializzaMat();
 	aspettaok();
+	spd = nh_.advertise<geometry_msgs::TwistStamped>("/consensus/speed", 1000);
 	image_sub = it.subscribe("epuck_tracking/result", 1, &Consensus::image_callback, this);
 	while(ros::ok()){
 		ros::spin();
@@ -96,8 +98,8 @@ void Consensus::acquisisciPos(){
 		}
 
 		tf::transformStampedTFToMsg(transform, msg);
-		Robots[i].x=msg.transform.translation.x;
-		Robots[i].y=msg.transform.translation.y;
+		Robots[i].x=msg.transform.translation.x*10;
+		Robots[i].y=msg.transform.translation.y*7.5;
 		geometry_msgs::Quaternion Q = msg.transform.rotation;
 		Robots[i].theta = asin((double)Q.z)/2;
 	}
@@ -105,6 +107,7 @@ void Consensus::acquisisciPos(){
 
 void Consensus::calcola_vel(){
 	double sumx=0,sumy=0;
+	geometry_msgs::TwistStamped cmd;
 	for(int i=0;i<3;i++){
 		for(int j=0;j<3;j++){
 			if(i!=j){
@@ -113,9 +116,12 @@ void Consensus::calcola_vel(){
 			}
 			Robots[i].xvel=-sumx + b_x[i];
 			Robots[i].yvel=-sumy + b_y[i];
+
 		}
-
-
+		cmd.header.frame_id=boost::to_string(i);
+		cmd.twist.linear.x=Robots[i].xvel;
+		cmd.twist.linear.y=Robots[i].yvel;
+		spd.publish(cmd);
 	}
 }
 void Consensus::aspettaok(){

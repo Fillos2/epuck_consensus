@@ -19,7 +19,7 @@ public:
 	virtual ~Consensus();
 private:
 	ros::NodeHandle nh_;
-
+	ros::Publisher spd;
 	Robopuck Robots[3];
 	int L_[3][3];
 	int b_x[3];
