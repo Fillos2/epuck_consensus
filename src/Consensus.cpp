@@ -102,6 +102,8 @@ void Consensus::acquisisciPos(){
 		Robots[i].y=msg.transform.translation.y*7.5;
 		geometry_msgs::Quaternion Q = msg.transform.rotation;
 		Robots[i].theta = asin((double)Q.z)/2;
+		Robots[i].x += Robots[i].b0*cos(Robots[i].theta);
+		Robots[i].y += Robots[i].b0*sin(Robots[i].theta);
 	}
 }
 
