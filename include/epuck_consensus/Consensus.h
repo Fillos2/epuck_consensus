@@ -34,7 +34,9 @@ private:
 	void inizializzaMat();
 	void aspettaok();
 	void acquisisciPos();
+	void acquisisciPos1();
 	void calcola_vel();
+	void calcola_vel1();
 	void image_callback(const sensor_msgs::ImageConstPtr& msg);
 };
 

@@ -11,6 +11,7 @@
 #include "epuck_consensus/Robopuck.h"
 #include "ros/ros.h"
 #include <tf/transform_listener.h>
+#include <tf/transform_broadcaster.h>
 #include <string>
 #include "math.h"
 #include <iostream>
@@ -31,9 +32,12 @@ Consensus::~Consensus() {
 	
 }
 void Consensus::image_callback(const sensor_msgs::ImageConstPtr& msg){
-	acquisisciPos();
-	calcola_vel();
-	for(int i=0;i<3;i++)
+	//acquisisciPos();
+	//calcola_vel();
+	acquisisciPos1();
+	calcola_vel1();
+	//for(int i=0;i<3;i++)
+	for(int i=0;i<2;i++)
 	Robots[i].invia();
 }
 
@@ -106,6 +110,33 @@ void Consensus::acquisisciPos(){
 		Robots[i].y += Robots[i].b0*sin(Robots[i].theta);
 	}
 }
+void Consensus::acquisisciPos1(){
+	tf::TransformListener listener;
+	tf::StampedTransform transform;
+	static tf::TransformBroadcaster br;
+	geometry_msgs::TransformStamped msg;
+	ros::Time now = ros::Time(0);
+	for(int i=0;i<2;i++){
+		Robots[i].set(i,&nh_);
+		try{
+			listener.waitForTransform("board", boost::to_string(i),now, ros::Duration(3.0));
+			listener.lookupTransform("board", boost::to_string(i),now, transform);
+
+		}
+		catch (tf::TransformException ex){
+			ROS_ERROR("%s",ex.what());
+			//ros::Duration(1.0).sleep();
+		}
+		br.sendTransform(transform);
+		tf::transformStampedTFToMsg(transform, msg);
+		Robots[i].x=msg.transform.translation.x*10;
+		Robots[i].y=msg.transform.translation.y*7.5;
+		geometry_msgs::Quaternion Q = msg.transform.rotation;
+		Robots[i].theta = asin((double)Q.z)/2;
+		Robots[i].x += Robots[i].b0*cos(Robots[i].theta);
+		Robots[i].y += Robots[i].b0*sin(Robots[i].theta);
+	}
+}
 
 void Consensus::calcola_vel(){
 	double sumx=0,sumy=0;
@@ -120,6 +151,32 @@ void Consensus::calcola_vel(){
 			Robots[i].yvel=-sumy + b_y[i];
 
 		}
+		cmd.header.frame_id=boost::to_string(i);
+		cmd.twist.linear.x=Robots[i].xvel;
+		cmd.twist.linear.y=Robots[i].yvel;
+		spd.publish(cmd);
+	}
+}
+void Consensus::calcola_vel1(){
+	double sumx=0,sumy=0;
+	tf::TransformListener listener;
+	tf::StampedTransform transform;
+	ros::Time now = ros::Time(0);
+	geometry_msgs::TwistStamped cmd;
+	geometry_msgs::TransformStamped msg;
+	for(int i=0;i<2;i++){
+		try{
+					listener.waitForTransform(boost::to_string(i),"board",now, ros::Duration(3.0));
+					listener.lookupTransform(boost::to_string(i),"board",now, transform);
+
+		}
+		catch (tf::TransformException ex){
+			ROS_ERROR("%s",ex.what());
+			//ros::Duration(1.0).sleep();
+		}
+		tf::transformStampedTFToMsg(transform, msg);
+		Robots[i].xvel=-msg.transform.translation.x;
+		Robots[i].xvel=-msg.transform.translation.y;
 		cmd.header.frame_id=boost::to_string(i);
 		cmd.twist.linear.x=Robots[i].xvel;
 		cmd.twist.linear.y=Robots[i].yvel;

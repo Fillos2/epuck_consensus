@@ -11,7 +11,7 @@
 #include "geometry_msgs/Twist.h"
 using namespace std;
 Robopuck::Robopuck(){
-	b0=0.035;
+	b0=0.35;
 	x=y=theta=xvel=yvel=0;
 	num=-1;
 }
