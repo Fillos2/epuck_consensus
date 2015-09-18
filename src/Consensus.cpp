@@ -15,13 +15,19 @@
 #include <string>
 #include "math.h"
 #include <iostream>
-#include <image_transport/image_transport.h>
+#include <epuck_tracking/bots.h>
 using namespace std;
-Consensus::Consensus():it(nh_) {
+Consensus::Consensus() {
 	inizializzaMat();
 	aspettaok();
-	spd = nh_.advertise<geometry_msgs::TwistStamped>("/consensus/speed", 1000);
-	image_sub = it.subscribe("epuck_tracking/result", 1, &Consensus::image_callback, this);
+	button_state_flag = false;
+	teleop=false;
+	in_state = false;
+	teleop_zero_x=teleop_zero_y=0.0;
+	bots_sub = nh_.subscribe("epuck_tracking/bots", 1, &Consensus::bots_callback, this);
+	phantom_state_sub = nh_.subscribe("/phantom/state",1,&Consensus::state_callback,this);
+	phantom_button_sub = nh_.subscribe("/phantom/button",1,&Consensus::button_callback,this);
+	phantom_feedback_pub = nh_.advertise<omni_msgs::OmniFeedback>("/phantom/force_feedback",1000);
 	while(ros::ok()){
 		ros::spin();
 	}
@@ -31,157 +37,168 @@ Consensus::Consensus():it(nh_) {
 Consensus::~Consensus() {
 	
 }
-void Consensus::image_callback(const sensor_msgs::ImageConstPtr& msg){
-	//acquisisciPos();
-	//calcola_vel();
-	acquisisciPos1();
-	calcola_vel1();
-	//for(int i=0;i<3;i++)
-	for(int i=0;i<2;i++)
-	Robots[i].invia();
+void Consensus::bots_callback(const epuck_tracking::bots& msg){
+	ROS_INFO_STREAM("bots");
+	acquisisciPos(msg);
+	calcola_vel(msg);
+
 }
 
 void Consensus::inizializzaMat(){
 	int i,j;
-	for(i=0;i<3;i++){
-		for(j=0;j<3;j++){
+	for(i=0;i<8;i++){
+		for(j=0;j<8;j++){
 			if(i==j)
-				L_[i][j]=2;
+				L_[i][j]=1.0;
 			else
-				L_[i][j]=-1;
+				L_[i][j]=0.0;
+			//ROS_INFO_STREAM(L_[i][j]);
 		}
 	}
-	x_[0]=0;
-	x_[1]=1;
-	x_[2]=2;
+	x_[0]=0.5;
+	y_[0]=0.5;
 
-	y_[0]=0;
-	y_[1]=0;
-	y_[2]=1;
+	x_[1]=0.5;
+	y_[1]=-0.5;
 
-	z_[0]=1;
-	z_[1]=1;
-	z_[2]=1;
+	x_[2]=-0.5;
+	y_[2]=0.5;
 
-	for (i = 0; i < 3; i++) {
-		b_x[i] = 0;
-		for (j = 0; j < 3; j++) {
-			b_x[i] = b_x[i] + L_[i][j] * x_[j];
+	x_[3]=-0.5;
+	y_[3]=-0.5;
+
+	x_[4]=0.8;
+	y_[4]=0.2;
+
+	x_[5]=0.0;
+	y_[5]=0.6;
+
+	x_[6]=0.0;
+	y_[6]=0.0;
+
+	x_[7]=0.0;
+	y_[7]=0.0;
+
+
+
+	for (i = 0; i < 8; i++) {
+		ROS_INFO_STREAM(i);
+		b_x[i] = 0.0;
+		b_y[i] = 0.0;
+
+		for (j = 0; j < 8; j++) {
+			//ROS_INFO_STREAM(i);
+
+			b_x[i] += L_[i][j] * x_[j];
+
+			b_y[i] += L_[i][j] * y_[j];
 	    }
-	}
-	for (i = 0; i < 3; i++) {
-		b_y[i] = 0;
-	 	for (j = 0; j < 3; j++) {
-	 		b_y[i] = b_y[i] + L_[i][j] * y_[j];
-	 	}
-	 }
+		//b_x[i]/=2.0;
+		//b_y[i]/=2.0;
+		ROS_INFO_STREAM("b_x"+boost::to_string(i)+" = "+boost::to_string(b_x[i]));
+		ROS_INFO_STREAM("b_y"+boost::to_string(i)+" = "+boost::to_string(b_y[i]));
 
-	for (i = 0; i < 3; i++) {
-		b_z[i] = 0;
-	 	for (j = 0; j < 3; j++) {
-	 		b_z[i] = b_z[i] + L_[i][j] * z_[j];
-	 	}
-	 }
+	}
+
 }
 
-void Consensus::acquisisciPos(){
+void Consensus::acquisisciPos(epuck_tracking::bots bots){
 	tf::TransformListener listener;
 	tf::StampedTransform transform;
-	geometry_msgs::TransformStamped msg;
+	geometry_msgs::PoseStamped poseMsg;
 	ros::Time now = ros::Time(0);
-	for(int i=0;i<3;i++){
-		Robots[i].set(i,&nh_);
+
+
+	for(int i=0;i<bots.bots.size();i++){
+		Robots[bots.bots[i]].set(bots.bots[i],&nh_);
 		try{
-			listener.waitForTransform("board", boost::to_string(i),now, ros::Duration(3.0));
-			listener.lookupTransform("board", boost::to_string(i),now, transform);
+			listener.waitForTransform("board","linear"+boost::to_string(bots.bots[i]),now, ros::Duration(0.5));
+			listener.lookupTransform("board","linear"+boost::to_string(bots.bots[i]),now, transform);
 
 		}
-		catch (tf::TransformException ex){
+		catch (tf::TransformException& ex){
 			ROS_ERROR("%s",ex.what());
 			//ros::Duration(1.0).sleep();
 		}
 
-		tf::transformStampedTFToMsg(transform, msg);
-		Robots[i].x=msg.transform.translation.x*10;
-		Robots[i].y=msg.transform.translation.y*7.5;
-		geometry_msgs::Quaternion Q = msg.transform.rotation;
-		Robots[i].theta = asin((double)Q.z)/2;
-		Robots[i].x += Robots[i].b0*cos(Robots[i].theta);
-		Robots[i].y += Robots[i].b0*sin(Robots[i].theta);
-	}
-}
-void Consensus::acquisisciPos1(){
-	tf::TransformListener listener;
-	tf::StampedTransform transform;
-	static tf::TransformBroadcaster br;
-	geometry_msgs::TransformStamped msg;
-	ros::Time now = ros::Time(0);
-	for(int i=0;i<2;i++){
-		Robots[i].set(i,&nh_);
-		try{
-			listener.waitForTransform("board", boost::to_string(i),now, ros::Duration(3.0));
-			listener.lookupTransform("board", boost::to_string(i),now, transform);
+		tf::poseTFToMsg(transform, poseMsg.pose);
+		Robots[i].x=poseMsg.pose.position.x;
+		Robots[i].y=poseMsg.pose.position.y;
 
-		}
-		catch (tf::TransformException ex){
-			ROS_ERROR("%s",ex.what());
-			//ros::Duration(1.0).sleep();
-		}
-		br.sendTransform(transform);
-		tf::transformStampedTFToMsg(transform, msg);
-		Robots[i].x=msg.transform.translation.x*10;
-		Robots[i].y=msg.transform.translation.y*7.5;
-		geometry_msgs::Quaternion Q = msg.transform.rotation;
-		Robots[i].theta = asin((double)Q.z)/2;
-		Robots[i].x += Robots[i].b0*cos(Robots[i].theta);
-		Robots[i].y += Robots[i].b0*sin(Robots[i].theta);
+		Robots[i].theta = tf::getYaw(poseMsg.pose.orientation);
+
+		//ROS_INFO_STREAM("position"+boost::to_string(i)+"  "+boost::to_string(Robots[i].x)+"   "+boost::to_string(Robots[i].y)+"   "+boost::to_string(Robots[i].theta));
+
 	}
 }
 
-void Consensus::calcola_vel(){
-	double sumx=0,sumy=0;
-	geometry_msgs::TwistStamped cmd;
-	for(int i=0;i<3;i++){
-		for(int j=0;j<3;j++){
+void Consensus::calcola_vel(epuck_tracking::bots bots){
+	double sumx,sumy;
+	omni_msgs::OmniFeedback forcefeedback;
+
+
+	for(int i=0;i<bots.bots.size();i++){
+		sumx=0,sumy=0;
+		for(int j=0;j<bots.bots.size();j++){
 			if(i!=j){
-				sumx+=Robots[i].x-Robots[j].x;
-				sumy+=Robots[i].y-Robots[j].y;
+				sumx+=Robots[bots.bots[i]].x-Robots[bots.bots[j]].x;
+				sumy+=Robots[bots.bots[i]].y-Robots[bots.bots[j]].y;
 			}
-			Robots[i].xvel=-sumx + b_x[i];
-			Robots[i].yvel=-sumy + b_y[i];
+			Robots[bots.bots[i]].xvel=-sumx+ b_x[bots.bots[i]];
+			Robots[bots.bots[i]].yvel=-sumy+ b_y[bots.bots[i]];
 
 		}
-		cmd.header.frame_id=boost::to_string(i);
-		cmd.twist.linear.x=Robots[i].xvel;
-		cmd.twist.linear.y=Robots[i].yvel;
-		spd.publish(cmd);
+		if(teleop && bots.bots[i]==0){
+			ROS_INFO_STREAM("force feedback");
+			forcefeedback.force.x= Robots[bots.bots[i]].xvel*2;
+			forcefeedback.force.y= Robots[bots.bots[i]].yvel*2;
+			forcefeedback.force.z=0.0;
+			phantom_feedback_pub.publish(forcefeedback);
+			Robots[bots.bots[i]].xvel += teleop_x/75;
+			Robots[bots.bots[i]].yvel += teleop_y/75;
+		}
+		Robots[bots.bots[i]].xvel/=5;
+		Robots[bots.bots[i]].yvel/=5;
+		Robots[bots.bots[i]].invia();
+
 	}
 }
-void Consensus::calcola_vel1(){
-	double sumx=0,sumy=0;
-	tf::TransformListener listener;
-	tf::StampedTransform transform;
-	ros::Time now = ros::Time(0);
-	geometry_msgs::TwistStamped cmd;
-	geometry_msgs::TransformStamped msg;
-	for(int i=0;i<2;i++){
-		try{
-					listener.waitForTransform(boost::to_string(i),"board",now, ros::Duration(3.0));
-					listener.lookupTransform(boost::to_string(i),"board",now, transform);
-
-		}
-		catch (tf::TransformException ex){
-			ROS_ERROR("%s",ex.what());
-			//ros::Duration(1.0).sleep();
-		}
-		tf::transformStampedTFToMsg(transform, msg);
-		Robots[i].xvel=-msg.transform.translation.x;
-		Robots[i].xvel=-msg.transform.translation.y;
-		cmd.header.frame_id=boost::to_string(i);
-		cmd.twist.linear.x=Robots[i].xvel;
-		cmd.twist.linear.y=Robots[i].yvel;
-		spd.publish(cmd);
+void Consensus::state_callback(const omni_msgs::OmniState& state){
+	if(state.end_effector_out_of_inkwell){
+		teleop_x =state.pose.position.x-teleop_zero_x;
+		teleop_y =state.pose.position.y-teleop_zero_y;
+		ROS_INFO_STREAM("out");
 	}
+	else{
+		teleop_x = teleop_y = 0.0;
+		ROS_INFO_STREAM("in");
+	}
+	in_state=state.end_effector_out_of_inkwell;
+	//ROS_INFO_STREAM(in_state);
+
+}
+void Consensus::button_callback(const omni_msgs::OmniButtonEvent& button){
+	omni_msgs::OmniFeedback msg;
+	msg.force.x=0.0;
+	msg.force.y=0.0;
+	if(in_state){
+		ROS_INFO_STREAM(button.grey_button);
+		if(button.grey_button == 0){
+			if(teleop==false){
+				teleop=true;
+				teleop_zero_x=teleop_x;
+				teleop_zero_y=teleop_y;
+				ROS_INFO_STREAM("teleop on");
+			}
+			else{
+				teleop=false;
+				teleop_zero_x=teleop_zero_y=0.0;
+				phantom_feedback_pub.publish(msg);
+				ROS_INFO_STREAM("teleop off");
+			}
+		}
+	}
+	ROS_INFO_STREAM("teleop ");
 }
 void Consensus::aspettaok(){
 	ROS_INFO("Premi un tasto per cominciare");
